@@ -1,0 +1,149 @@
+import contextvars
+from collections.abc import Callable
+
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from .api_client import CoveClient
+from .config import Settings
+
+# Per-request credential isolation via contextvars.
+# GatewayTokenMiddleware sets this before the MCP handler runs.
+# Python asyncio copies context per task, so concurrent SSE connections are isolated.
+# Value is (partner, username, password) — Cove has no static API key; every
+# call re-authenticates via Login (see api_client.CoveClient).
+_gateway_creds_var: contextvars.ContextVar[tuple[str, str, str] | None] = contextvars.ContextVar(
+    "cove_gateway_creds", default=None
+)
+
+
+def get_client_from_context(settings: Settings) -> CoveClient | None:
+    """Resolve the active CoveClient for the current request context."""
+    creds = _gateway_creds_var.get()
+    if not creds:
+        return None
+    partner, username, password = creds
+    return CoveClient(partner, username, password, settings.covedataprotection_base_url)
+
+
+class GatewayTokenMiddleware:
+    """ASGI middleware.
+
+    Reads X-CoveDataProtection-Partner, X-CoveDataProtection-Username, and
+    X-CoveDataProtection-Password (all required) from request headers and
+    stores them in the contextvar. Returns 401 if any is missing on /mcp
+    requests.
+    """
+
+    def __init__(self, app: ASGIApp, settings: Settings):
+        self.app = app
+        self.settings = settings
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if not path.startswith("/mcp"):
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        partner = request.headers.get("x-covedataprotection-partner")
+        username = request.headers.get("x-covedataprotection-username")
+        password = request.headers.get("x-covedataprotection-password")
+        if not partner or not username or not password:
+            response = JSONResponse(
+                {
+                    "error": "Missing credentials",
+                    "message": (
+                        "This server requires the X-CoveDataProtection-Partner, "
+                        "X-CoveDataProtection-Username, and "
+                        "X-CoveDataProtection-Password headers"
+                    ),
+                    "required_headers": [
+                        "X-CoveDataProtection-Partner",
+                        "X-CoveDataProtection-Username",
+                        "X-CoveDataProtection-Password",
+                    ],
+                    "optional_headers": [],
+                },
+                status_code=401,
+            )
+            await response(scope, receive, send)
+            return
+
+        ctx_token = _gateway_creds_var.set((partner, username, password))
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _gateway_creds_var.reset(ctx_token)
+
+
+def create_mcp_server(settings: Settings) -> FastMCP:
+    """Build the FastMCP server instance and register all Cove Data Protection tools."""
+    # DNS-rebinding protection is a browser-oriented safeguard that rejects
+    # non-localhost Host headers with 421. Disable it so the server works
+    # correctly behind a reverse proxy or docker network.
+    mcp = FastMCP(
+        name="covedataprotection-mcp",
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
+
+    client_factory: Callable[[], CoveClient | None] = lambda: get_client_from_context(settings)
+
+    from .tools import (
+        accounts,
+        audit,
+        branding,
+        contacts,
+        countries,
+        custom_columns,
+        email,
+        eula,
+        features,
+        jobs,
+        labels,
+        locations,
+        misc,
+        notifications,
+        partners,
+        permissions,
+        products,
+        regions,
+        storage,
+        storage_nodes,
+        templates,
+        users,
+        view_delivery,
+    )
+
+    accounts.register(mcp, client_factory)
+    audit.register(mcp, client_factory)
+    branding.register(mcp, client_factory)
+    contacts.register(mcp, client_factory)
+    countries.register(mcp, client_factory)
+    custom_columns.register(mcp, client_factory)
+    email.register(mcp, client_factory)
+    eula.register(mcp, client_factory)
+    features.register(mcp, client_factory)
+    jobs.register(mcp, client_factory)
+    labels.register(mcp, client_factory)
+    locations.register(mcp, client_factory)
+    misc.register(mcp, client_factory)
+    notifications.register(mcp, client_factory)
+    partners.register(mcp, client_factory)
+    permissions.register(mcp, client_factory)
+    products.register(mcp, client_factory)
+    regions.register(mcp, client_factory)
+    storage.register(mcp, client_factory)
+    storage_nodes.register(mcp, client_factory)
+    templates.register(mcp, client_factory)
+    users.register(mcp, client_factory)
+    view_delivery.register(mcp, client_factory)
+
+    return mcp
