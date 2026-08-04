@@ -98,52 +98,14 @@ def create_mcp_server(settings: Settings) -> FastMCP:
 
     from .tools import (
         accounts,
-        audit,
-        branding,
-        contacts,
-        countries,
-        custom_columns,
-        email,
-        eula,
-        features,
-        jobs,
-        labels,
-        locations,
         misc,
-        notifications,
         partners,
-        permissions,
-        products,
-        regions,
-        storage,
-        storage_nodes,
-        templates,
         users,
-        view_delivery,
     )
 
     accounts.register(mcp, client_factory)
-    audit.register(mcp, client_factory)
-    branding.register(mcp, client_factory)
-    contacts.register(mcp, client_factory)
-    countries.register(mcp, client_factory)
-    custom_columns.register(mcp, client_factory)
-    email.register(mcp, client_factory)
-    eula.register(mcp, client_factory)
-    features.register(mcp, client_factory)
-    jobs.register(mcp, client_factory)
-    labels.register(mcp, client_factory)
-    locations.register(mcp, client_factory)
     misc.register(mcp, client_factory)
-    notifications.register(mcp, client_factory)
     partners.register(mcp, client_factory)
-    permissions.register(mcp, client_factory)
-    products.register(mcp, client_factory)
-    regions.register(mcp, client_factory)
-    storage.register(mcp, client_factory)
-    storage_nodes.register(mcp, client_factory)
-    templates.register(mcp, client_factory)
     users.register(mcp, client_factory)
-    view_delivery.register(mcp, client_factory)
 
     return mcp
