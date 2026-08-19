@@ -91,6 +91,26 @@ def create_mcp_server(settings: Settings) -> FastMCP:
     # correctly behind a reverse proxy or docker network.
     mcp = FastMCP(
         name="covedataprotection-mcp",
+        instructions=(
+            "Cove Data Protection (N-able's MSP backup/BDR platform, formerly "
+            "N-able Backup) organizes data hierarchically: partners (MSP/customer "
+            "tenants, which can nest child partners) each own accounts (backup "
+            "devices/endpoints) and users (portal logins). Use this server for "
+            "MSP backup-fleet questions: which customers/partners exist and how "
+            "they nest (covedataprotection_enumerate_partners, "
+            "_enumerate_child_partners, _get_partner_tree), which backup devices "
+            "a partner has and their backup stats (covedataprotection_"
+            "enumerate_accounts, _enumerate_account_statistics), which features "
+            "are enabled on a device (_get_account_features), and who has portal "
+            "access (covedataprotection_enumerate_users, _enumerate_user_roles). "
+            "Typical flow: enumerate_partners to find a partner_id, then "
+            "enumerate_accounts(partner_id=...) or enumerate_users(partner_ids=...) "
+            "to see its devices/users, then a get_*_info_by_id / "
+            "enumerate_account_statistics tool for details. Write tools "
+            "(add/modify/remove/set_*) create, update, or delete real partners, "
+            "accounts, or users in production — use only on an explicit request "
+            "naming the exact resource, never as a guess or bulk action."
+        ),
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
 

@@ -1,199 +1,211 @@
-import json
 from collections.abc import Callable
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
+from .._json import dump_json_capped
 from ..api_client import CoveClient, CoveError
 from ._common import NO_TOKEN
 
+_SCHEMA_HINT = "see Schema_23.3.json (linked in README) for exact field names"
+
 
 def register(mcp: FastMCP, client_factory: Callable[[], CoveClient | None]) -> None:
-    @mcp.tool()
-    async def covedataprotection_add_partner(partner_info: dict, create_default_account: bool) -> str:
-        """Cove Data Protection Management Service method: AddPartner.
-
-        JSON-RPC method: AddPartner
-
-        Args:
-            partner_info: Required. Maps to "partnerInfo" (dict).
-            create_default_account: Required. Maps to "createDefaultAccount" (bool).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
+    async def covedataprotection_add_partner(
+        partner_info: Annotated[
+            dict,
+            Field(description=f"New partner fields, per Cove's PartnerInfo struct ({_SCHEMA_HINT})."),
+        ],
+        create_default_account: Annotated[
+            bool, Field(description="Whether to also create a default backup account for the new partner.")
+        ],
+    ) -> str:
+        """Create a new partner (MSP/customer tenant) under a parent partner."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"partnerInfo": partner_info, "createDefaultAccount": create_default_account}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("AddPartner", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_enumerate_child_partners(partner_id: int, fields: dict, partner_filter: dict, range: dict | None = None) -> str:
-        """Cove Data Protection Management Service method: EnumerateChildPartners.
-
-        JSON-RPC method: EnumerateChildPartners
-
-        Args:
-            partner_id: Required. Maps to "partnerId" (int).
-            fields: Required. Maps to "fields" (dict).
-            partner_filter: Required. Maps to "partnerFilter" (dict).
-            range: Optional. Maps to "range" (dict).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_enumerate_child_partners(
+        partner_id: Annotated[int, Field(description="Partner ID whose direct children to list.")],
+        fields: Annotated[
+            dict,
+            Field(description=f"Which partner fields to include in the response ({_SCHEMA_HINT})."),
+        ],
+        partner_filter: Annotated[
+            dict,
+            Field(description=f"Filter criteria to narrow the child partners returned ({_SCHEMA_HINT})."),
+        ],
+        range: Annotated[
+            dict | None,
+            Field(description="Optional paging window (e.g. offset/count) over the result set."),
+        ] = None,
+    ) -> str:
+        """List the direct child partners of a given partner, with field selection and filtering."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {"partnerId": partner_id, "fields": fields, "partnerFilter": partner_filter, "range": range}
+        params = {
+            "partnerId": partner_id,
+            "fields": fields,
+            "partnerFilter": partner_filter,
+            "range": range,
+        }
         params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("EnumerateChildPartners", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_enumerate_partners(parent_partner_id: int, fetch_recursively: bool, fields: dict) -> str:
-        """Cove Data Protection Management Service method: EnumeratePartners.
-
-        JSON-RPC method: EnumeratePartners
-
-        Args:
-            parent_partner_id: Required. Maps to "parentPartnerId" (int).
-            fetch_recursively: Required. Maps to "fetchRecursively" (bool).
-            fields: Required. Maps to "fields" (dict).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_enumerate_partners(
+        parent_partner_id: Annotated[int, Field(description="Partner ID to list descendants of.")],
+        fetch_recursively: Annotated[
+            bool, Field(description="If true, include all descendant partners, not just direct children.")
+        ],
+        fields: Annotated[
+            dict,
+            Field(description=f"Which partner fields to include in the response ({_SCHEMA_HINT})."),
+        ],
+    ) -> str:
+        """List partners under a parent partner, optionally including all descendants recursively."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {"parentPartnerId": parent_partner_id, "fetchRecursively": fetch_recursively, "fields": fields}
-        params = {k: v for k, v in params.items() if v is not None}
+        params = {
+            "parentPartnerId": parent_partner_id,
+            "fetchRecursively": fetch_recursively,
+            "fields": fields,
+        }
         try:
             result = await client.call("EnumeratePartners", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_get_partner_info(name: str) -> str:
-        """Cove Data Protection Management Service method: GetPartnerInfo.
-
-        JSON-RPC method: GetPartnerInfo
-
-        Args:
-            name: Required. Maps to "name" (str).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_get_partner_info(
+        name: Annotated[str, Field(description="Partner name to look up.")],
+    ) -> str:
+        """Get partner details by partner name."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"name": name}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("GetPartnerInfo", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_get_partner_info_by_id(partner_id: int) -> str:
-        """Cove Data Protection Management Service method: GetPartnerInfoById.
-
-        JSON-RPC method: GetPartnerInfoById
-
-        Args:
-            partner_id: Required. Maps to "partnerId" (int).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_get_partner_info_by_id(
+        partner_id: Annotated[int, Field(description="Partner ID to fetch details for.")],
+    ) -> str:
+        """Get partner details by numeric partner ID."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"partnerId": partner_id}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("GetPartnerInfoById", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_get_partner_tree(partner_id: int, fields: dict, filter: str, children_limit: int, partner_filter: dict) -> str:
-        """Cove Data Protection Management Service method: GetPartnerTree.
-
-        JSON-RPC method: GetPartnerTree
-
-        Args:
-            partner_id: Required. Maps to "partnerId" (int).
-            fields: Required. Maps to "fields" (dict).
-            filter: Required. Maps to "filter" (str).
-            children_limit: Required. Maps to "childrenLimit" (int).
-            partner_filter: Required. Maps to "partnerFilter" (dict).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_get_partner_tree(
+        partner_id: Annotated[int, Field(description="Root partner ID to build the tree from.")],
+        fields: Annotated[
+            dict,
+            Field(description=f"Which partner fields to include for each node ({_SCHEMA_HINT})."),
+        ],
+        filter: Annotated[str, Field(description="Filter expression to narrow which descendants are included.")],
+        children_limit: Annotated[int, Field(description="Maximum number of children to return per node.")],
+        partner_filter: Annotated[
+            dict,
+            Field(description=f"Filter criteria applied to partner nodes in the tree ({_SCHEMA_HINT})."),
+        ],
+    ) -> str:
+        """Get the hierarchical tree of a partner and its descendant partners."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {"partnerId": partner_id, "fields": fields, "filter": filter, "childrenLimit": children_limit, "partnerFilter": partner_filter}
-        params = {k: v for k, v in params.items() if v is not None}
+        params = {
+            "partnerId": partner_id,
+            "fields": fields,
+            "filter": filter,
+            "childrenLimit": children_limit,
+            "partnerFilter": partner_filter,
+        }
         try:
             result = await client.call("GetPartnerTree", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
     async def covedataprotection_get_root_partner_name() -> str:
-        """Cove Data Protection Management Service method: GetRootPartnerName.
-
-        JSON-RPC method: GetRootPartnerName
-
-        """
+        """Get the name of the root (top-level) partner for this Cove environment."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
-            result = await client.call("GetRootPartnerName", params)
-            return json.dumps(result, indent=2, default=str)
+            result = await client.call("GetRootPartnerName", {})
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_modify_partner(partner_info: dict, force_remove_custom_column_values_in_old_scope: bool) -> str:
-        """Cove Data Protection Management Service method: ModifyPartner.
-
-        JSON-RPC method: ModifyPartner
-
-        Args:
-            partner_info: Required. Maps to "partnerInfo" (dict).
-            force_remove_custom_column_values_in_old_scope: Required. Maps to "forceRemoveCustomColumnValuesInOldScope" (bool).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True))
+    async def covedataprotection_modify_partner(
+        partner_info: Annotated[
+            dict,
+            Field(
+                description=f"Partner fields to overwrite, per Cove's PartnerInfo struct — must include the partner's id ({_SCHEMA_HINT})."
+            ),
+        ],
+        force_remove_custom_column_values_in_old_scope: Annotated[
+            bool,
+            Field(
+                description="If moving the partner to a new parent scope, whether to drop custom-column values that don't exist in the new scope."
+            ),
+        ],
+    ) -> str:
+        """Update a partner's properties. Overwrites existing values; not reversible via this API."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {"partnerInfo": partner_info, "forceRemoveCustomColumnValuesInOldScope": force_remove_custom_column_values_in_old_scope}
-        params = {k: v for k, v in params.items() if v is not None}
+        params = {
+            "partnerInfo": partner_info,
+            "forceRemoveCustomColumnValuesInOldScope": force_remove_custom_column_values_in_old_scope,
+        }
         try:
             result = await client.call("ModifyPartner", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_remove_partner(partner_id: int) -> str:
-        """Cove Data Protection Management Service method: RemovePartner.
-
-        JSON-RPC method: RemovePartner
-
-        Args:
-            partner_id: Required. Maps to "partnerId" (int).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True))
+    async def covedataprotection_remove_partner(
+        partner_id: Annotated[int, Field(description="ID of the partner to permanently delete.")],
+    ) -> str:
+        """Permanently delete a partner by ID. Irreversible; only call with an explicit, confirmed partner ID."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"partnerId": partner_id}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("RemovePartner", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
-
+            return e.to_envelope()

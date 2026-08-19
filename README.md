@@ -83,7 +83,7 @@ Missing any of the three headers returns `401`:
 ## MCP Endpoint
 
 - `POST /mcp` — MCP protocol (streamable HTTP transport)
-- `GET /health` — health check, returns `{"status": "ok", "service": "covedataprotection-mcp", "transport": "http"}`
+- `GET /health` — health check, returns exactly `{"status": "ok"}` (pure local liveness probe; does not call the Cove API)
 
 ## Tool List
 
@@ -152,9 +152,19 @@ curl -s -X POST http://localhost:8080/mcp \
 ```
 
 Expected: `200` with the server version on valid credentials; on invalid
-credentials, the `Login` call itself fails and every tool surfaces
-`Error: Cove Data Protection API error ...` with the vendor's JSON-RPC error
-message.
+credentials, the `Login` call itself fails and every tool returns a
+structured JSON error envelope, e.g.:
+
+```json
+{"error":{"code":"unauthorized","message":"<vendor error message>","retryable":false}}
+```
+
+`code` is one of the fixed values `not_configured` / `unauthorized` /
+`not_found` / `invalid_argument` / `rate_limited` / `upstream_error`;
+`retryable` tells the caller whether retrying the same call could succeed
+(true only for `rate_limited` and `upstream_error`). Tools never raise
+exceptions for business/vendor errors — this envelope is returned as the
+normal tool result string.
 
 **Live-verified** (2026-07-29): `covedataprotection_get_server_info` (zero
 parameters) was called end-to-end through this running server with a real
@@ -200,8 +210,8 @@ API, not just structurally.
   reproducing each one as a typed Python parameter was out of scope for a
   mechanically-generated server. Callers need to shape these dict
   arguments to match the vendor's schema (see the Structs section of
-  `Schema_23.3.json` for exact field names) — the tool docstrings name the
-  original JSON-RPC parameter name and type to help with this.
+  `Schema_23.3.json` for exact field names) — each such parameter's
+  description names the struct it maps to and points at that schema file.
 - **No visa caching** — see the Authentication section above. Every tool
   call performs its own Login, which is simple and fully stateless but
   means 2 HTTP requests to the vendor per tool call instead of 1.
@@ -211,3 +221,30 @@ API, not just structurally.
   live-verified end-to-end; the rest are structurally correct (schema
   validated, MCP-protocol tools/list confirmed) but not individually
   smoke-tested against real data.
+
+## Vendor MCP SOP Compliance Notes
+
+- **Tool count (26) exceeds the SOP's "should be ≤20" guideline.** Already
+  trimmed 247 → 26 (see above); the remaining 26 map 1:1 to distinct
+  JSON-RPC methods across 3 resource domains (accounts/partners/users) that
+  cannot be merged without losing required-parameter distinctions (e.g.
+  `get_*_info` by name+password vs. `get_*_info_by_id` by numeric ID are
+  different lookup keys, not the same tool with an optional parameter).
+- **No `limit` / `page_size` scalar parameter exists on any tool.** None of
+  the 26 methods expose a first-class numeric page-size parameter — the one
+  pagination-shaped field (`range` on `EnumerateChildPartners`) is an opaque
+  vendor struct passed through as-is, and `children_limit` on
+  `GetPartnerTree` is likewise passed straight to the vendor uninterpreted.
+  There is nothing for this server to clamp against the SOP's default-50 /
+  hard-cap-200 guidance; if the vendor schema's `range`/limit structs turn
+  out to have their own documented per-page maximum, that should be
+  enforced here instead of the SOP's generic fallback ceiling.
+- **No credential env-var fallback.** `config.Settings` has no
+  partner/username/password field; `get_client_from_context` returns `None`
+  (→ `not_configured` envelope) whenever the per-request contextvar is
+  unset. There is no code path that falls back to an environment variable.
+- **Tool annotations**: every read tool (`get_*`, `enumerate_*`) is marked
+  `readOnlyHint=True, idempotentHint=True`; `add_*` tools are
+  `readOnlyHint=False, idempotentHint=False` (creating twice is not a
+  no-op); `modify_*`/`set_*`/`remove_*` tools are
+  `readOnlyHint=False, destructiveHint=True, idempotentHint=True`.

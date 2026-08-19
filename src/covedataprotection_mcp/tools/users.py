@@ -1,150 +1,126 @@
-import json
 from collections.abc import Callable
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
+from .._json import dump_json_capped
 from ..api_client import CoveClient, CoveError
 from ._common import NO_TOKEN
 
+_SCHEMA_HINT = "see Schema_23.3.json (linked in README) for exact field names"
+
 
 def register(mcp: FastMCP, client_factory: Callable[[], CoveClient | None]) -> None:
-    @mcp.tool()
-    async def covedataprotection_add_user(user_info: dict) -> str:
-        """Cove Data Protection Management Service method: AddUser.
-
-        JSON-RPC method: AddUser
-
-        Args:
-            user_info: Required. Maps to "userInfo" (dict).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
+    async def covedataprotection_add_user(
+        user_info: Annotated[
+            dict,
+            Field(description=f"New user fields, per Cove's UserInfo struct ({_SCHEMA_HINT})."),
+        ],
+    ) -> str:
+        """Create a new portal user account."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"userInfo": user_info}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("AddUser", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
     async def covedataprotection_enumerate_user_roles() -> str:
-        """Cove Data Protection Management Service method: EnumerateUserRoles.
-
-        JSON-RPC method: EnumerateUserRoles
-
-        """
+        """List the available user role definitions."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
-        params = {}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
-            result = await client.call("EnumerateUserRoles", params)
-            return json.dumps(result, indent=2, default=str)
+            result = await client.call("EnumerateUserRoles", {})
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_enumerate_users(partner_ids: list[int]) -> str:
-        """Cove Data Protection Management Service method: EnumerateUsers.
-
-        JSON-RPC method: EnumerateUsers
-
-        Args:
-            partner_ids: Required. Maps to "partnerIds" (list[int]).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_enumerate_users(
+        partner_ids: Annotated[list[int], Field(description="Partner IDs whose portal users to list.")],
+    ) -> str:
+        """List portal users under the given partner IDs."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"partnerIds": partner_ids}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("EnumerateUsers", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_get_user_info(partner_id: int, name_or_email: str, password: str) -> str:
-        """Cove Data Protection Management Service method: GetUserInfo.
-
-        JSON-RPC method: GetUserInfo
-
-        Args:
-            partner_id: Required. Maps to "partnerId" (int).
-            name_or_email: Required. Maps to "nameOrEmail" (str).
-            password: Required. Maps to "password" (str).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_get_user_info(
+        partner_id: Annotated[int, Field(description="Partner ID the user belongs to.")],
+        name_or_email: Annotated[str, Field(description="The user's login name or email address.")],
+        password: Annotated[str, Field(description="The user's login password.")],
+    ) -> str:
+        """Look up a portal user by partner, name/email, and password."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"partnerId": partner_id, "nameOrEmail": name_or_email, "password": password}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("GetUserInfo", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_get_user_info_by_id(user_id: int) -> str:
-        """Cove Data Protection Management Service method: GetUserInfoById.
-
-        JSON-RPC method: GetUserInfoById
-
-        Args:
-            user_id: Required. Maps to "userId" (int).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True))
+    async def covedataprotection_get_user_info_by_id(
+        user_id: Annotated[int, Field(description="User ID to fetch details for.")],
+    ) -> str:
+        """Get portal user details by numeric user ID."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"userId": user_id}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("GetUserInfoById", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_modify_user(user_info: dict) -> str:
-        """Cove Data Protection Management Service method: ModifyUser.
-
-        JSON-RPC method: ModifyUser
-
-        Args:
-            user_info: Required. Maps to "userInfo" (dict).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True))
+    async def covedataprotection_modify_user(
+        user_info: Annotated[
+            dict,
+            Field(
+                description=f"User fields to overwrite, per Cove's UserInfo struct — must include the user's id ({_SCHEMA_HINT})."
+            ),
+        ],
+    ) -> str:
+        """Update a portal user's properties. Overwrites existing values; not reversible via this API."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"userInfo": user_info}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("ModifyUser", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
+            return e.to_envelope()
 
-    @mcp.tool()
-    async def covedataprotection_remove_user(user_id: int) -> str:
-        """Cove Data Protection Management Service method: RemoveUser.
-
-        JSON-RPC method: RemoveUser
-
-        Args:
-            user_id: Required. Maps to "userId" (int).
-        """
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True))
+    async def covedataprotection_remove_user(
+        user_id: Annotated[int, Field(description="ID of the portal user to permanently delete.")],
+    ) -> str:
+        """Permanently delete a portal user by ID. Irreversible; only call with an explicit, confirmed user ID."""
         client = client_factory()
         if client is None:
             return NO_TOKEN
         params = {"userId": user_id}
-        params = {k: v for k, v in params.items() if v is not None}
         try:
             result = await client.call("RemoveUser", params)
-            return json.dumps(result, indent=2, default=str)
+            return dump_json_capped(result)
         except CoveError as e:
-            return f"Error: {e}"
-
+            return e.to_envelope()
